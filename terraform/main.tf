@@ -2,18 +2,19 @@ data "oci_identity_availability_domains" "ads" {
   compartment_id = var.compartment_ocid
 }
 
-data "oci_core_images" "ubuntu_arm" {
+data "oci_core_images" "ubuntu" {
   compartment_id           = var.compartment_ocid
   operating_system         = "Canonical Ubuntu"
   operating_system_version = "22.04"
-  shape                    = "VM.Standard.A1.Flex"
+  shape                    = var.instance_shape
   sort_by                  = "TIMECREATED"
   sort_order               = "DESC"
 }
 
 locals {
+  is_flex_shape        = can(regex("Flex$", var.instance_shape))
   ad_name              = data.oci_identity_availability_domains.ads.availability_domains[0].name
-  ubuntu_image_id      = data.oci_core_images.ubuntu_arm.images[0].id
+  ubuntu_image_id      = data.oci_core_images.ubuntu.images[0].id
   deploy_ssh_public_key = var.deploy_ssh_public_key != "" ? var.deploy_ssh_public_key : var.ssh_public_key
   cloud_init = templatefile("${path.module}/cloud-init.yaml.tftpl", {
     ssh_public_key        = var.ssh_public_key
@@ -101,11 +102,14 @@ resource "oci_core_instance" "platform" {
   availability_domain = local.ad_name
   compartment_id      = var.compartment_ocid
   display_name        = var.instance_name
-  shape               = "VM.Standard.A1.Flex"
+  shape               = var.instance_shape
 
-  shape_config {
-    ocpus         = var.shape_ocpus
-    memory_in_gbs = var.shape_memory_gb
+  dynamic "shape_config" {
+    for_each = local.is_flex_shape ? [1] : []
+    content {
+      ocpus         = var.shape_ocpus
+      memory_in_gbs = var.shape_memory_gb
+    }
   }
 
   create_vnic_details {

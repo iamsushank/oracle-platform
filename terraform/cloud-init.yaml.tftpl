@@ -47,6 +47,13 @@ runcmd:
   - apt-get install -y caddy
   - systemctl enable --now caddy
 
+  # Swap — small RAM shapes (e.g. E2.1.Micro 1GB) OOM without it
+  - fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
+  - chmod 600 /swapfile
+  - mkswap /swapfile
+  - swapon /swapfile
+  - bash -c 'echo "/swapfile none swap sw 0 0" >> /etc/fstab'
+
   # Platform layout
   - mkdir -p /srv
   - chown deploy:deploy /srv

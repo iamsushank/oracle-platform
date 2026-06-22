@@ -59,16 +59,22 @@ variable "admin_cidr" {
   default     = "0.0.0.0/0"
 }
 
+variable "instance_shape" {
+  description = "Compute shape. Default is AMD Always Free (x86). Use VM.Standard.A1.Flex for Ampere ARM."
+  type        = string
+  default     = "VM.Standard.E2.1.Micro"
+}
+
 variable "shape_ocpus" {
-  description = "Ampere A1 OCPUs (free tier allows up to 4 total across all A1 VMs)."
+  description = "OCPUs for Flex shapes only (ignored by fixed shapes like E2.1.Micro)."
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "shape_memory_gb" {
-  description = "Ampere A1 memory in GB."
+  description = "Memory in GB for Flex shapes only (ignored by fixed shapes like E2.1.Micro)."
   type        = number
-  default     = 12
+  default     = 6
 }
 
 variable "platform_hostname" {
