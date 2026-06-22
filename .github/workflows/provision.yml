@@ -15,6 +15,28 @@ name: Provision
 #   APP_REPOS       (space-separated owner/repo list to receive deploy secrets)
 
 on:
+  workflow_call:
+    inputs:
+      action:
+        description: apply or destroy
+        type: string
+        default: apply
+      region:
+        description: OCI region override (blank = use OCI_REGION var)
+        type: string
+        default: ""
+      ocpus:
+        description: Ampere A1 OCPUs
+        type: string
+        default: "2"
+      memory_gb:
+        description: Ampere A1 memory (GB)
+        type: string
+        default: "12"
+      capacity_retry:
+        description: Treat A1 capacity errors as non-fatal (scheduled retries)
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       action:
@@ -41,7 +63,12 @@ permissions:
 env:
   TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'oracle-platform-tfstate' }}
   TF_STATE_KEY: oracle-platform/terraform.tfstate
-  OCI_REGION: ${{ github.event.inputs.region != '' && github.event.inputs.region || vars.OCI_REGION }}
+  OCI_REGION: ${{ inputs.region != '' && inputs.region || vars.OCI_REGION }}
+  TF_ACTION: ${{ inputs.action || github.event.inputs.action || 'apply' }}
+  TF_OCPUS: ${{ inputs.ocpus || github.event.inputs.ocpus || '2' }}
+  TF_MEMORY_GB: ${{ inputs.memory_gb || github.event.inputs.memory_gb || '12' }}
+  TF_REGION: ${{ inputs.region != '' && inputs.region || github.event.inputs.region != '' && github.event.inputs.region || vars.OCI_REGION }}
+  TF_CAPACITY_RETRY: ${{ inputs.capacity_retry == true }}
 
 jobs:
   terraform:
@@ -58,14 +85,16 @@ jobs:
       TF_VAR_fingerprint: ${{ secrets.OCI_FINGERPRINT }}
       TF_VAR_private_key: ${{ secrets.OCI_PRIVATE_KEY }}
       TF_VAR_compartment_ocid: ${{ secrets.OCI_COMPARTMENT_OCID }}
-      TF_VAR_region: ${{ github.event.inputs.region != '' && github.event.inputs.region || vars.OCI_REGION }}
+      TF_VAR_region: ${{ env.TF_REGION }}
       TF_VAR_ssh_public_key: ${{ secrets.PLATFORM_SSH_PUBLIC_KEY }}
       TF_VAR_deploy_ssh_public_key: ${{ secrets.PLATFORM_SSH_PUBLIC_KEY }}
-      TF_VAR_shape_ocpus: ${{ github.event.inputs.ocpus || '2' }}
-      TF_VAR_shape_memory_gb: ${{ github.event.inputs.memory_gb || '12' }}
-      # S3-compatible backend auth
+      TF_VAR_shape_ocpus: ${{ env.TF_OCPUS }}
+      TF_VAR_shape_memory_gb: ${{ env.TF_MEMORY_GB }}
+      # S3-compatible backend auth (Oracle Object Storage)
       AWS_ACCESS_KEY_ID: ${{ secrets.OCI_S3_ACCESS_KEY }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.OCI_S3_SECRET_KEY }}
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
     steps:
       - uses: actions/checkout@v4
 
@@ -140,21 +169,29 @@ jobs:
         run: terraform init -backend-config=backend.hcl
 
       - name: Terraform apply
-        if: ${{ github.event.inputs.action != 'destroy' }}
+        if: ${{ env.TF_ACTION != 'destroy' }}
+        id: tf_apply
+        continue-on-error: ${{ env.TF_CAPACITY_RETRY == 'true' }}
         run: terraform apply -auto-approve
 
+      - name: Note capacity retry
+        if: ${{ env.TF_CAPACITY_RETRY == 'true' && steps.tf_apply.outcome == 'failure' }}
+        run: |
+          echo "A1 capacity not available yet — will retry on next scheduled run."
+          exit 0
+
       - name: Terraform destroy
-        if: ${{ github.event.inputs.action == 'destroy' }}
+        if: ${{ env.TF_ACTION == 'destroy' }}
         run: terraform destroy -auto-approve
 
       - name: Capture outputs
         id: tf_out
-        if: ${{ github.event.inputs.action != 'destroy' }}
+        if: ${{ env.TF_ACTION != 'destroy' && steps.tf_apply.outcome == 'success' }}
         run: echo "public_ip=$(terraform output -raw instance_public_ip)" >> "$GITHUB_OUTPUT"
 
   publish-secrets:
     needs: terraform
-    if: ${{ github.event.inputs.action != 'destroy' && needs.terraform.outputs.public_ip != '' }}
+    if: ${{ env.TF_ACTION != 'destroy' && needs.terraform.outputs.public_ip != '' }}
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.PLATFORM_GH_TOKEN }}
@@ -174,15 +211,15 @@ jobs:
 
   configure:
     needs: [terraform, publish-secrets]
-    if: ${{ github.event.inputs.action != 'destroy' }}
+    if: ${{ env.TF_ACTION != 'destroy' && needs.terraform.outputs.public_ip != '' }}
     uses: ./.github/workflows/configure.yml
     with:
       public_ip: ${{ needs.terraform.outputs.public_ip }}
     secrets: inherit
 
   trigger-deploys:
-    needs: configure
-    if: ${{ github.event.inputs.action != 'destroy' }}
+    needs: [terraform, configure]
+    if: ${{ env.TF_ACTION != 'destroy' && needs.terraform.outputs.public_ip != '' }}
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.PLATFORM_GH_TOKEN }}

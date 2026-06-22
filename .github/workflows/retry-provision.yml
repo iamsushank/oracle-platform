@@ -1,0 +1,39 @@
+name: Retry Provision (capacity)
+
+# Retries platform provisioning when Oracle A1 free tier is out of capacity.
+# Runs every 4 hours (UTC) and on manual dispatch. Never destroys resources.
+#
+# Uses 1 OCPU / 6 GB by default (more likely to fit). On success: configure +
+# app deploy run automatically. On capacity failure: exits OK; next run retries.
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+    inputs:
+      ocpus:
+        description: Ampere A1 OCPUs (smaller may fit sooner)
+        type: string
+        default: "1"
+      memory_gb:
+        description: Ampere A1 memory GB
+        type: string
+        default: "6"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oracle-platform-provision
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    uses: ./.github/workflows/provision.yml
+    with:
+      action: apply
+      region: ""
+      ocpus: ${{ github.event.inputs.ocpus || '1' }}
+      memory_gb: ${{ github.event.inputs.memory_gb || '6' }}
+      capacity_retry: true
+    secrets: inherit

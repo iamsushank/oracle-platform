@@ -84,6 +84,7 @@ gh variable set OCI_REGION --body "ap-mumbai-1" -R iamsushank/oracle-platform
 | Workflow | Trigger | Does |
 |----------|---------|------|
 | `provision.yml` | manual (`apply`/`destroy`) | Terraform + publish secrets + configure + trigger app deploys |
+| `retry-provision.yml` | every 4h (UTC) or manual | Same as apply; tolerates A1 capacity errors and retries |
 | `configure.yml` | called by provision, push to `apps/**` or `ansible/**`, or manual | Ansible: app stacks + Caddy + deploy |
 
 ---
