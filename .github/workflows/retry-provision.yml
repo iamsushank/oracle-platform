@@ -6,9 +6,11 @@ name: Retry Provision (capacity)
 # Uses 1 OCPU / 6 GB by default (more likely to fit). On success: configure +
 # app deploy run automatically. On capacity failure: exits OK; next run retries.
 
+# Re-enable the schedule below only while waiting on A1 capacity. With a VM
+# already provisioned, leave it manual so it doesn't redeploy on a timer.
 on:
-  schedule:
-    - cron: '0 */4 * * *'
+  # schedule:
+  #   - cron: '0 */4 * * *'
   workflow_dispatch:
     inputs:
       ocpus:
