@@ -66,4 +66,10 @@ runcmd:
   - ufw allow 443/tcp
   - ufw --force enable
 
+  # OCI Ubuntu images ship a legacy iptables REJECT (above UFW) that only
+  # permits SSH. Open 80/443 before that REJECT and persist across reboots.
+  - iptables -C INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || iptables -I INPUT 5 -p tcp --dport 80 -j ACCEPT
+  - iptables -C INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || iptables -I INPUT 6 -p tcp --dport 443 -j ACCEPT
+  - netfilter-persistent save || true
+
 final_message: "Platform cloud-init complete after $UPTIME seconds"

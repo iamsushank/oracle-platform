@@ -57,6 +57,21 @@
     chdir: "/srv/{{ item.name }}"
   loop: "{{ platform_apps }}"
 
+- name: Ensure caddy group exists
+  ansible.builtin.group:
+    name: caddy
+    system: true
+
+- name: Ensure caddy system user exists
+  ansible.builtin.user:
+    name: caddy
+    group: caddy
+    system: true
+    home: /var/lib/caddy
+    create_home: true
+    shell: /usr/sbin/nologin
+    comment: Caddy web server
+
 - name: Install Caddyfile
   ansible.builtin.template:
     src: Caddyfile.j2
