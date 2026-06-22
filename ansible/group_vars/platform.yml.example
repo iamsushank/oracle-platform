@@ -1,0 +1,6 @@
+# Platform-wide settings. Copy to group_vars/platform.yml
+---
+platform_email: admin@example.com
+
+# Proxy first registered app on http://PUBLIC_IP until real domains are configured
+platform_ip_fallback: true

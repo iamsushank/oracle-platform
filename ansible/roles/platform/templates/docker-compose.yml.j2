@@ -1,0 +1,10 @@
+services:
+  app:
+    image: {{ item.image }}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:{{ item.port }}:{{ item.container_port | default(8080) }}"
+    environment:
+{% for key, value in item.env.items() %}
+      {{ key }}: "{{ value }}"
+{% endfor %}

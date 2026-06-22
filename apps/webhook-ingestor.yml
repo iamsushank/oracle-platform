@@ -1,0 +1,14 @@
+---
+name: webhook-ingestor
+domain: webhook.example.com
+port: 8080
+layout: stack
+image: ghcr.io/iamsushank/webhook-ingestor:latest
+stack:
+  postgres_image: postgres:16-alpine
+  postgres_db: webhooks
+  seed_samples: "false"
+env:
+  LLM_PROVIDER: mock
+  LOG_LEVEL: info
+  SEED_SAMPLES: "false"

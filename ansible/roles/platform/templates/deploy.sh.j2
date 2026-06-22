@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Deploy one app or all apps on the platform VM.
+# Usage: platform-deploy [app-name]
+set -euo pipefail
+
+deploy_app() {
+  local name="$1"
+  local dir="/srv/$name"
+  if [ ! -f "$dir/docker-compose.yml" ]; then
+    echo "error: no compose file at $dir" >&2
+    exit 1
+  fi
+  echo "==> deploying $name"
+  cd "$dir"
+  docker compose pull
+  docker compose up -d --remove-orphans
+}
+
+if [ "${1:-}" != "" ]; then
+  deploy_app "$1"
+else
+  for dir in /srv/*/; do
+    [ -f "${dir}docker-compose.yml" ] || continue
+    deploy_app "$(basename "$dir")"
+  done
+fi
+
+docker image prune -f
+echo "Deploy complete."

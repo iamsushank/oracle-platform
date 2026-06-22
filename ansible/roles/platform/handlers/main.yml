@@ -1,0 +1,12 @@
+---
+- name: Reload caddy
+  systemd:
+    name: caddy
+    state: reloaded
+
+- name: Restart app
+  become_user: deploy
+  command: docker compose up -d --remove-orphans
+  args:
+    chdir: "/srv/{{ item.name }}"
+  loop: "{{ platform_apps }}"

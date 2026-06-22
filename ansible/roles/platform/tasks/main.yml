@@ -1,0 +1,68 @@
+---
+- name: Ensure deploy user in docker group
+  ansible.builtin.user:
+    name: deploy
+    groups: docker
+    append: true
+
+- name: Ensure /srv exists
+  ansible.builtin.file:
+    path: /srv
+    state: directory
+    owner: deploy
+    group: deploy
+    mode: "0755"
+
+- name: Create app directories
+  ansible.builtin.file:
+    path: "/srv/{{ item.name }}"
+    state: directory
+    owner: deploy
+    group: deploy
+    mode: "0755"
+  loop: "{{ platform_apps }}"
+
+- name: Deploy app compose files
+  ansible.builtin.template:
+    src: "{{ 'docker-compose.stack.yml.j2' if (item.layout | default('single')) == 'stack' else 'docker-compose.yml.j2' }}"
+    dest: "/srv/{{ item.name }}/docker-compose.yml"
+    owner: deploy
+    group: deploy
+    mode: "0644"
+  loop: "{{ platform_apps }}"
+  notify: Restart app
+
+- name: Pull and start apps
+  become_user: deploy
+  ansible.builtin.command: docker compose pull
+  args:
+    chdir: "/srv/{{ item.name }}"
+  loop: "{{ platform_apps }}"
+  register: pull_result
+  changed_when: "'Downloaded' in pull_result.stdout or 'Pulled' in pull_result.stdout"
+
+- name: Docker compose up
+  become_user: deploy
+  ansible.builtin.command: docker compose up -d --remove-orphans
+  args:
+    chdir: "/srv/{{ item.name }}"
+  loop: "{{ platform_apps }}"
+
+- name: Install Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: /etc/caddy/Caddyfile
+    mode: "0644"
+  notify: Reload caddy
+
+- name: Install deploy helper script
+  ansible.builtin.template:
+    src: deploy.sh.j2
+    dest: /usr/local/bin/platform-deploy
+    mode: "0755"
+
+- name: Ensure Caddy is running
+  ansible.builtin.systemd:
+    name: caddy
+    state: started
+    enabled: true

@@ -1,0 +1,14 @@
+---
+# Copy to apps/<your-app>.yml
+#
+# layout: single  — one container (default)
+# layout: stack   — Postgres + API + worker (see docker-compose.stack.yml.j2)
+
+name: my-app
+domain: myapp.example.com
+port: 8081
+layout: single
+container_port: 8080
+image: ghcr.io/YOUR_GITHUB_USER/my-app:latest
+env:
+  NODE_ENV: production

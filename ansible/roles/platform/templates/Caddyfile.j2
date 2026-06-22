@@ -1,0 +1,14 @@
+{% if platform_ip_fallback | default(true) %}
+# HTTP via public IP until DNS + HTTPS domain is configured
+:80 {
+    reverse_proxy 127.0.0.1:{{ platform_apps[0].port }}
+}
+{% endif %}
+
+{% for app in platform_apps %}
+{% if app.domain is defined and app.domain | length > 0 and not app.domain.endswith('.example.com') %}
+{{ app.domain }} {
+    reverse_proxy 127.0.0.1:{{ app.port }}
+}
+{% endif %}
+{% endfor %}

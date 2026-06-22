@@ -1,0 +1,10 @@
+# Copy to inventory.yml after: terraform -chdir=infra/terraform apply
+# Replace ansible_host with output instance_public_ip
+
+all:
+  children:
+    platform:
+      hosts:
+        oracle:
+          ansible_host: YOUR_PUBLIC_IP
+          ansible_user: ubuntu

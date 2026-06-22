@@ -1,0 +1,47 @@
+services:
+  db:
+    image: {{ item.stack.postgres_image | default('postgres:16-alpine') }}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: {{ item.stack.postgres_db | default('webhooks') }}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d {{ item.stack.postgres_db | default('webhooks') }}"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    image: {{ item.image }}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:{{ item.port }}:8080"
+    environment:
+      DATABASE_URL: "postgres://postgres:postgres@db:5432/{{ item.stack.postgres_db | default('webhooks') }}?sslmode=disable"
+      MODE: server
+      PORT: "8080"
+{% for key, value in item.env.items() %}
+      {{ key }}: "{{ value }}"
+{% endfor %}
+
+  worker:
+    image: {{ item.image }}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgres://postgres:postgres@db:5432/{{ item.stack.postgres_db | default('webhooks') }}?sslmode=disable"
+      MODE: worker
+{% for key, value in item.env.items() %}
+      {{ key }}: "{{ value }}"
+{% endfor %}
+
+volumes:
+  pgdata:

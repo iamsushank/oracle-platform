@@ -1,0 +1,19 @@
+---
+- name: Configure Oracle platform VM
+  hosts: platform
+  gather_facts: true
+
+  pre_tasks:
+    - name: Load app manifests from apps/
+      ansible.builtin.set_fact:
+        platform_apps: "{{ platform_apps | default([]) + [lookup('file', item) | from_yaml] }}"
+      loop: "{{ query('fileglob', playbook_dir + '/../apps/*.yml') | sort }}"
+      when: not (item | basename).startswith('_')
+
+    - name: Require at least one app manifest
+      ansible.builtin.assert:
+        that: platform_apps | length > 0
+        fail_msg: "Add an app manifest under apps/ (see apps/_template.yml)"
+
+  roles:
+    - platform
