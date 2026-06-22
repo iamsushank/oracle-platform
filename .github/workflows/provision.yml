@@ -99,18 +99,28 @@ jobs:
 
       - name: Ensure state bucket exists
         run: |
-          EXISTS=$(oci os bucket list \
-            --compartment-id "${{ secrets.OCI_COMPARTMENT_OCID }}" \
-            --query "length(data[?name=='$TF_STATE_BUCKET'])" --raw-output 2>/dev/null || echo 0)
-          if [ "$EXISTS" = "0" ]; then
+          NS="${{ steps.ns.outputs.namespace }}"
+          if oci os bucket get --namespace "$NS" --name "$TF_STATE_BUCKET" >/dev/null 2>&1; then
+            echo "State bucket $TF_STATE_BUCKET already exists"
+          else
             echo "Creating state bucket $TF_STATE_BUCKET"
             oci os bucket create \
               --compartment-id "${{ secrets.OCI_COMPARTMENT_OCID }}" \
               --name "$TF_STATE_BUCKET" \
               --versioning Enabled
-          else
-            echo "State bucket $TF_STATE_BUCKET already exists"
           fi
+
+      - name: Verify S3-compatible credentials
+        run: |
+          NS="${{ steps.ns.outputs.namespace }}"
+          ENDPOINT="https://${NS}.compat.objectstorage.${OCI_REGION}.oraclecloud.com"
+          if ! AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
+            aws s3 ls --endpoint-url "$ENDPOINT" "s3://${TF_STATE_BUCKET}/" >/dev/null 2>&1; then
+            echo "::error::S3 credentials cannot access bucket $TF_STATE_BUCKET." >&2
+            echo "Regenerate a Customer Secret Key (Profile → Customer Secret Keys) and update OCI_S3_ACCESS_KEY / OCI_S3_SECRET_KEY." >&2
+            exit 1
+          fi
+          echo "S3 credentials OK"
 
       - uses: hashicorp/setup-terraform@v3
         with:

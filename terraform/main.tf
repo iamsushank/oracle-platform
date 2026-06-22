@@ -138,15 +138,6 @@ data "oci_core_vnic" "platform" {
   vnic_id = data.oci_core_vnic_attachments.platform.vnic_attachments[0].vnic_id
 }
 
-data "oci_core_private_ips" "platform" {
-  vnic_id = data.oci_core_vnic.platform.id
-}
-
-data "oci_core_public_ips" "platform" {
-  compartment_id = var.compartment_ocid
-  private_ip_id  = data.oci_core_private_ips.platform.private_ips[0].id
-}
-
 locals {
-  public_ip = data.oci_core_public_ips.platform.public_ips[0].ip_address
+  public_ip = data.oci_core_vnic.platform.public_ip_address
 }
