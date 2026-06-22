@@ -1,3 +1,9 @@
+{% if platform_email is defined and platform_email | length > 0 %}
+{
+    email {{ platform_email }}
+}
+{% endif %}
+
 {% if platform_ip_fallback | default(true) %}
 # HTTP via public IP until DNS + HTTPS domain is configured
 :80 {

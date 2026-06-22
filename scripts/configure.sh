@@ -12,4 +12,6 @@ if [ ! -f group_vars/platform.yml ]; then
   echo "Created group_vars/platform.yml from example."
 fi
 
-ansible-playbook playbooks/site.yml
+ansible-playbook playbooks/site.yml \
+  -e "ghcr_user=${GHCR_USER:-${GITHUB_OWNER:-}}" \
+  -e "ghcr_pull_token=${GHCR_PULL_TOKEN:-}"

@@ -22,6 +22,15 @@
     mode: "0755"
   loop: "{{ platform_apps }}"
 
+# Only needed for private GHCR images. Public packages require no login.
+- name: Log in to GHCR (private images)
+  become_user: deploy
+  ansible.builtin.command:
+    cmd: docker login ghcr.io -u "{{ ghcr_user }}" --password-stdin
+    stdin: "{{ ghcr_pull_token }}"
+  no_log: true
+  when: ghcr_pull_token | default('') | length > 0
+
 - name: Deploy app compose files
   ansible.builtin.template:
     src: "{{ 'docker-compose.stack.yml.j2' if (item.layout | default('single')) == 'stack' else 'docker-compose.yml.j2' }}"

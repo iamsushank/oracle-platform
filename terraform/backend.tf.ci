@@ -1,0 +1,15 @@
+# CI-only backend (NOT a .tf file so the laptop path keeps local state).
+# provision.yml copies this to backend.tf and runs:
+#   terraform init -backend-config=backend.hcl
+#
+# State lives in Oracle Object Storage via the S3-compatible API. Auth uses a
+# Customer Secret Key exposed as AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY.
+terraform {
+  backend "s3" {
+    use_path_style              = true
+    skip_region_validation      = true
+    skip_credentials_validation = true
+    skip_metadata_api_check     = true
+    skip_requesting_account_id  = true
+  }
+}

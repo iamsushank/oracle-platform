@@ -14,9 +14,16 @@ variable "fingerprint" {
 }
 
 variable "private_key_path" {
-  description = "Path to the OCI API private key PEM file."
+  description = "Path to the OCI API private key PEM file (laptop use)."
   type        = string
   default     = "~/.oci/oci_api_key.pem"
+}
+
+variable "private_key" {
+  description = "OCI API private key PEM contents (CI use via TF_VAR_private_key). Takes precedence over private_key_path."
+  type        = string
+  default     = ""
+  sensitive   = true
 }
 
 variable "region" {

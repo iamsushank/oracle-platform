@@ -1,0 +1,12 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+terraform.tfvars
+tfplan
+*.pem
+crash.log
+
+# CI-only runtime files (activated from backend.tf.ci)
+backend.tf
+backend.hcl

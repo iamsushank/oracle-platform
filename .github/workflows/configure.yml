@@ -1,0 +1,87 @@
+name: Configure
+
+# Configure the VM with Ansible: render app stacks, Caddy, and (re)deploy.
+# Callable from provision.yml, on push to main (apps/** or ansible/**),
+# or manually. Reads the VM IP from the ORACLE_HOST repo variable unless
+# passed in via workflow_call.
+
+on:
+  workflow_call:
+    inputs:
+      public_ip:
+        description: VM public IP (defaults to ORACLE_HOST variable)
+        type: string
+        required: false
+        default: ""
+  workflow_dispatch:
+    inputs:
+      public_ip:
+        description: VM public IP (blank = ORACLE_HOST variable)
+        type: string
+        default: ""
+  push:
+    branches: [main]
+    paths:
+      - apps/**
+      - ansible/**
+
+permissions:
+  contents: read
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    env:
+      PUBLIC_IP: ${{ inputs.public_ip != '' && inputs.public_ip || vars.ORACLE_HOST }}
+      GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+      GHCR_USER: ${{ vars.GHCR_USER || github.repository_owner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate IP
+        run: |
+          if [ -z "$PUBLIC_IP" ]; then
+            echo "No public IP. Run provision.yml first or set ORACLE_HOST variable." >&2
+            exit 1
+          fi
+          echo "Target: $PUBLIC_IP"
+
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s' "${{ secrets.PLATFORM_SSH_PRIVATE_KEY }}" > ~/.ssh/platform_key
+          chmod 600 ~/.ssh/platform_key
+
+      - name: Wait for SSH
+        run: ./scripts/wait-for-ssh.sh "$PUBLIC_IP" deploy ~/.ssh/platform_key
+
+      - name: Install Ansible
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible
+
+      - name: Render inventory
+        run: |
+          mkdir -p ansible/group_vars
+          cat > ansible/inventory.yml <<EOF
+          all:
+            children:
+              platform:
+                hosts:
+                  oracle:
+                    ansible_host: $PUBLIC_IP
+                    ansible_user: deploy
+                    ansible_ssh_private_key_file: ~/.ssh/platform_key
+                    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+          EOF
+          [ -f ansible/group_vars/platform.yml ] || \
+            cp ansible/group_vars/platform.yml.example ansible/group_vars/platform.yml
+
+      - name: Run Ansible
+        working-directory: ansible
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "False"
+        run: |
+          ansible-playbook playbooks/site.yml \
+            -e "ghcr_user=${GHCR_USER}" \
+            -e "ghcr_pull_token=${GHCR_PULL_TOKEN}"

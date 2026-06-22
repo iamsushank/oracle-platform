@@ -27,14 +27,20 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 
+# shellcheck disable=SC1090
+set -a && source "$ENV_FILE" && set +a
+
 "$ROOT/scripts/generate-tfvars.sh" "$ENV_FILE"
 
 echo "==> Terraform provision"
 "$ROOT/scripts/provision.sh"
 
 IP=$(cd "$ROOT/terraform" && terraform output -raw instance_public_ip)
-echo "==> VM public IP: $IP — waiting 120s for cloud-init"
-sleep 120
+echo "==> VM public IP: $IP"
+
+expand_path() { echo "${1/#\~/$HOME}"; }
+DEPLOY_SSH_KEY="$(expand_path "${DEPLOY_SSH_KEY:-$HOME/.ssh/github_deploy}")"
+"$ROOT/scripts/wait-for-ssh.sh" "$IP" deploy "$DEPLOY_SSH_KEY" 360
 
 echo "==> Ansible inventory"
 mkdir -p "$ROOT/ansible/group_vars"
@@ -45,7 +51,9 @@ all:
       hosts:
         oracle:
           ansible_host: $IP
-          ansible_user: ubuntu
+          ansible_user: deploy
+          ansible_ssh_private_key_file: $DEPLOY_SSH_KEY
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
 EOF
 
 [ -f "$ROOT/ansible/group_vars/platform.yml" ] || \
@@ -57,16 +65,13 @@ ANSIBLE_HOST_KEY_CHECKING=False "$ROOT/scripts/configure.sh"
 echo "==> GitHub secrets"
 "$ROOT/scripts/setup-github-secrets.sh" "$ENV_FILE"
 
-echo "==> Trigger webhook-ingestor deploy"
-GITHUB_OWNER="${GITHUB_OWNER:-iamsushank}"
-WEBHOOK_REPO="${WEBHOOK_INGESTOR_REPO:-webhook-ingestor}"
-gh workflow run deploy.yml -R "$GITHUB_OWNER/$WEBHOOK_REPO" 2>/dev/null || \
-  gh workflow run "Build and Deploy" -R "$GITHUB_OWNER/$WEBHOOK_REPO" || true
+echo "==> Trigger app deploys"
+"$ROOT/scripts/trigger-app-deploys.sh"
 
 echo ""
 echo "============================================"
 echo " DONE"
 echo " Dashboard: http://$IP/"
 echo " Health:    curl http://$IP/healthz"
-echo " GitHub:    gh run list -R $GITHUB_OWNER/$WEBHOOK_REPO"
+echo " GitHub:    gh run list -R ${APP_REPOS%% *}"
 echo "============================================"

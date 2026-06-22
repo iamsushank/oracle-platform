@@ -7,7 +7,7 @@
     - name: Load app manifests from apps/
       ansible.builtin.set_fact:
         platform_apps: "{{ platform_apps | default([]) + [lookup('file', item) | from_yaml] }}"
-      loop: "{{ query('fileglob', playbook_dir + '/../apps/*.yml') | sort }}"
+      loop: "{{ query('fileglob', playbook_dir + '/../../apps/*.yml') | sort }}"
       when: not (item | basename).startswith('_')
 
     - name: Require at least one app manifest

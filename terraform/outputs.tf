@@ -14,11 +14,11 @@ output "ssh_command" {
 
 output "ansible_inventory_hint" {
   value = <<-EOT
-    Add to infra/ansible/inventory.yml:
+    Add to ansible/inventory.yml:
       platform:
         hosts:
           oracle:
             ansible_host: ${local.public_ip}
-            ansible_user: ubuntu
+            ansible_user: deploy
   EOT
 }

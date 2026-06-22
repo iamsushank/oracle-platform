@@ -1,0 +1,184 @@
+name: Provision
+
+# End-to-end infra: create/update (or destroy) the Oracle VM with Terraform,
+# store state in OCI Object Storage, publish ORACLE_HOST/KEY to app repos,
+# then chain configure.yml.
+#
+# Required repo secrets:
+#   OCI_PRIVATE_KEY, OCI_TENANCY_OCID, OCI_USER_OCID, OCI_FINGERPRINT,
+#   OCI_COMPARTMENT_OCID, OCI_S3_ACCESS_KEY, OCI_S3_SECRET_KEY,
+#   PLATFORM_SSH_PRIVATE_KEY, PLATFORM_SSH_PUBLIC_KEY, PLATFORM_GH_TOKEN
+# Required repo variables:
+#   OCI_REGION  (e.g. ap-mumbai-1)
+# Optional repo variables:
+#   TF_STATE_BUCKET (default: oracle-platform-tfstate)
+#   APP_REPOS       (space-separated owner/repo list to receive deploy secrets)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: apply or destroy
+        type: choice
+        options: [apply, destroy]
+        default: apply
+      region:
+        description: OCI region override (blank = use OCI_REGION var)
+        type: string
+        default: ""
+      ocpus:
+        description: Ampere A1 OCPUs
+        type: string
+        default: "2"
+      memory_gb:
+        description: Ampere A1 memory (GB)
+        type: string
+        default: "12"
+
+permissions:
+  contents: read
+
+env:
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'oracle-platform-tfstate' }}
+  TF_STATE_KEY: oracle-platform/terraform.tfstate
+  OCI_REGION: ${{ github.event.inputs.region != '' && github.event.inputs.region || vars.OCI_REGION }}
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    outputs:
+      public_ip: ${{ steps.tf_out.outputs.public_ip }}
+    defaults:
+      run:
+        working-directory: terraform
+    env:
+      # OCI provider (consumed as TF_VAR_*)
+      TF_VAR_tenancy_ocid: ${{ secrets.OCI_TENANCY_OCID }}
+      TF_VAR_user_ocid: ${{ secrets.OCI_USER_OCID }}
+      TF_VAR_fingerprint: ${{ secrets.OCI_FINGERPRINT }}
+      TF_VAR_private_key: ${{ secrets.OCI_PRIVATE_KEY }}
+      TF_VAR_compartment_ocid: ${{ secrets.OCI_COMPARTMENT_OCID }}
+      TF_VAR_region: ${{ github.event.inputs.region != '' && github.event.inputs.region || vars.OCI_REGION }}
+      TF_VAR_ssh_public_key: ${{ secrets.PLATFORM_SSH_PUBLIC_KEY }}
+      TF_VAR_deploy_ssh_public_key: ${{ secrets.PLATFORM_SSH_PUBLIC_KEY }}
+      TF_VAR_shape_ocpus: ${{ github.event.inputs.ocpus || '2' }}
+      TF_VAR_shape_memory_gb: ${{ github.event.inputs.memory_gb || '12' }}
+      # S3-compatible backend auth
+      AWS_ACCESS_KEY_ID: ${{ secrets.OCI_S3_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.OCI_S3_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OCI CLI
+        run: |
+          curl -sL https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh \
+            | bash -s -- --accept-all-defaults
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Configure OCI CLI
+        run: |
+          mkdir -p ~/.oci
+          printf '%s' "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/oci_api_key.pem
+          chmod 600 ~/.oci/oci_api_key.pem
+          cat > ~/.oci/config <<EOF
+          [DEFAULT]
+          user=${{ secrets.OCI_USER_OCID }}
+          fingerprint=${{ secrets.OCI_FINGERPRINT }}
+          tenancy=${{ secrets.OCI_TENANCY_OCID }}
+          region=${{ env.OCI_REGION }}
+          key_file=$HOME/.oci/oci_api_key.pem
+          EOF
+          chmod 600 ~/.oci/config
+
+      - name: Resolve Object Storage namespace
+        id: ns
+        run: |
+          NS=$(oci os ns get --query data --raw-output)
+          echo "namespace=$NS" >> "$GITHUB_OUTPUT"
+          echo "endpoint=https://$NS.compat.objectstorage.${OCI_REGION}.oraclecloud.com" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure state bucket exists
+        run: |
+          EXISTS=$(oci os bucket list \
+            --compartment-id "${{ secrets.OCI_COMPARTMENT_OCID }}" \
+            --query "length(data[?name=='$TF_STATE_BUCKET'])" --raw-output 2>/dev/null || echo 0)
+          if [ "$EXISTS" = "0" ]; then
+            echo "Creating state bucket $TF_STATE_BUCKET"
+            oci os bucket create \
+              --compartment-id "${{ secrets.OCI_COMPARTMENT_OCID }}" \
+              --name "$TF_STATE_BUCKET" \
+              --versioning Enabled
+          else
+            echo "State bucket $TF_STATE_BUCKET already exists"
+          fi
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: Activate remote backend
+        run: |
+          cp backend.tf.ci backend.tf
+          cat > backend.hcl <<EOF
+          bucket    = "$TF_STATE_BUCKET"
+          key       = "$TF_STATE_KEY"
+          region    = "$OCI_REGION"
+          endpoints = { s3 = "${{ steps.ns.outputs.endpoint }}" }
+          EOF
+
+      - name: Terraform init
+        run: terraform init -backend-config=backend.hcl
+
+      - name: Terraform apply
+        if: ${{ github.event.inputs.action != 'destroy' }}
+        run: terraform apply -auto-approve
+
+      - name: Terraform destroy
+        if: ${{ github.event.inputs.action == 'destroy' }}
+        run: terraform destroy -auto-approve
+
+      - name: Capture outputs
+        id: tf_out
+        if: ${{ github.event.inputs.action != 'destroy' }}
+        run: echo "public_ip=$(terraform output -raw instance_public_ip)" >> "$GITHUB_OUTPUT"
+
+  publish-secrets:
+    needs: terraform
+    if: ${{ github.event.inputs.action != 'destroy' && needs.terraform.outputs.public_ip != '' }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.PLATFORM_GH_TOKEN }}
+      PUBLIC_IP: ${{ needs.terraform.outputs.public_ip }}
+      APP_REPOS: ${{ vars.APP_REPOS || 'iamsushank/webhook-ingestor' }}
+    steps:
+      - name: Set ORACLE_HOST variable on platform repo
+        run: gh variable set ORACLE_HOST --body "$PUBLIC_IP" -R "${{ github.repository }}"
+
+      - name: Push deploy secrets to app repos
+        run: |
+          for repo in $APP_REPOS; do
+            echo "==> $repo"
+            gh secret set ORACLE_HOST --body "$PUBLIC_IP" -R "$repo"
+            printf '%s' "${{ secrets.PLATFORM_SSH_PRIVATE_KEY }}" | gh secret set ORACLE_SSH_KEY -R "$repo"
+          done
+
+  configure:
+    needs: [terraform, publish-secrets]
+    if: ${{ github.event.inputs.action != 'destroy' }}
+    uses: ./.github/workflows/configure.yml
+    with:
+      public_ip: ${{ needs.terraform.outputs.public_ip }}
+    secrets: inherit
+
+  trigger-deploys:
+    needs: configure
+    if: ${{ github.event.inputs.action != 'destroy' }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.PLATFORM_GH_TOKEN }}
+      APP_REPOS: ${{ vars.APP_REPOS || 'iamsushank/webhook-ingestor' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trigger app deploy workflows
+        run: ./scripts/trigger-app-deploys.sh
