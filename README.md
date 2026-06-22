@@ -17,7 +17,36 @@ oracle-platform (this repo)          your-app repos
     └── my-other-app.yml
 ```
 
-## Quick start
+## Quick start (fully scripted)
+
+### One-time Oracle API key (only manual step Oracle allows)
+
+1. Console → **Profile → API Keys → Add API Key** → download `~/.oci/oci_api_key.pem`
+2. Either fill `.env.platform` OR run `oci setup config` then:
+
+```bash
+./scripts/print-oci-env.sh >> .env.platform
+```
+
+### Bootstrap everything (one command)
+
+```bash
+git clone https://github.com/iamsushank/oracle-platform.git
+cd oracle-platform
+cp .env.platform.example .env.platform
+# edit .env.platform with OCI values (or use print-oci-env.sh)
+
+brew install terraform ansible gh   # macOS; or apt install on Linux
+./scripts/bootstrap.sh
+```
+
+`bootstrap.sh` runs: Terraform → wait for cloud-init → Ansible → GitHub secrets → triggers `webhook-ingestor` deploy.
+
+Open `http://<VM_IP>/` when done.
+
+---
+
+## Quick start (manual steps)
 
 ### 1. Prerequisites
 

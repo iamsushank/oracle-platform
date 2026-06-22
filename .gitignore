@@ -1,10 +1,2 @@
-.terraform/
-*.tfstate
-*.tfstate.*
-.terraform.lock.hcl
-terraform.tfvars
-*.pem
-crash.log
-
-ansible/inventory.yml
-ansible/group_vars/platform.yml
+.env.platform
+.env.platform.local
