@@ -101,7 +101,7 @@ jobs:
       - name: Configure OCI CLI
         run: |
           mkdir -p ~/.oci
-          printf '%s' "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/oci_api_key.pem
+          printf '%s\n' "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/oci_api_key.pem
           chmod 600 ~/.oci/oci_api_key.pem
           cat > ~/.oci/config <<EOF
           [DEFAULT]
@@ -200,7 +200,7 @@ jobs:
           for repo in $APP_REPOS; do
             echo "==> $repo"
             gh secret set ORACLE_HOST --body "$PUBLIC_IP" -R "$repo"
-            printf '%s' "${{ secrets.PLATFORM_SSH_PRIVATE_KEY }}" | gh secret set ORACLE_SSH_KEY -R "$repo"
+            printf '%s\n' "${{ secrets.PLATFORM_SSH_PRIVATE_KEY }}" | gh secret set ORACLE_SSH_KEY -R "$repo"
           done
 
   configure:
