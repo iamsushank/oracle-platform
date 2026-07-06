@@ -4,11 +4,22 @@
 }
 {% endif %}
 
+{% set first_app = platform_apps[0] %}
+{% set first_domain = (first_app.domain | default('')).split(' ') | first %}
+{% set first_has_domain = first_domain | length > 0 and not first_domain.endswith('.example.com') %}
 {% if platform_ip_fallback | default(true) %}
+{% if first_has_domain %}
+# Requests by bare IP (or unknown Host) redirect to the canonical domain so
+# search engines and stale bookmarks converge on one origin.
+:80 {
+    redir https://{{ first_domain }}{uri} permanent
+}
+{% else %}
 # HTTP via public IP until DNS + HTTPS domain is configured
 :80 {
-    reverse_proxy 127.0.0.1:{{ platform_apps[0].port }}
+    reverse_proxy 127.0.0.1:{{ first_app.port }}
 }
+{% endif %}
 {% endif %}
 
 {% for app in platform_apps %}
