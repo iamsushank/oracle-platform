@@ -1,6 +1,6 @@
 ---
 name: webhook-ingestor
-domain: webhook.example.com
+domain: webhookingestor.online www.webhookingestor.online
 port: 8080
 layout: stack
 image: ghcr.io/iamsushank/webhook-ingestor:latest

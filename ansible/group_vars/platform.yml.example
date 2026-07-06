@@ -1,6 +1,8 @@
 # Platform-wide settings. Copy to group_vars/platform.yml
 ---
-platform_email: admin@example.com
+# ACME/Let's Encrypt contact for cert expiry notices. Leave empty to omit —
+# LE rejects example.com addresses, so never ship a placeholder here.
+platform_email: ""
 
 # Proxy first registered app on http://PUBLIC_IP until real domains are configured
 platform_ip_fallback: true
